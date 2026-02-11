@@ -1,0 +1,23 @@
+---
+description: WarmPath product and engineering principles
+alwaysApply: true
+---
+
+# WarmPath: Product & Engineering Principles
+
+## Product
+
+- **Personal network coordination tool**—not a social network, CRM, or referral marketplace.
+- **Private by default:** Personal networks are user-owned; nothing is shared unless the user explicitly shares.
+- **Atomic action:** The core flow is (1) query your personal network, (2) selectively share results. No passive sharing or broadcasting.
+- **Projects** are optional containers for coordination, not mechanisms for exposure.
+- **Trust and clarity** over polish.
+
+## Engineering
+
+- **Correctness first:** Behavior and data flow must be correct; edge cases and privacy boundaries matter.
+- **Simplicity:** Prefer clear, minimal solutions. Fewer concepts and moving parts.
+- **Learnability:** Code and UX should be easy to understand for future contributors and users.
+- **Avoid overengineering:** No speculative features, unnecessary abstractions, or “just in case” complexity. Build what’s needed.
+
+When in doubt, choose the simpler, more correct option.

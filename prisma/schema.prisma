@@ -1,0 +1,206 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Auth models (NextAuth) – minimal, left close to the official schema
+// ---------------------------------------------------------------------------
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  // Auth.js relations
+  accounts Account[]
+  sessions Session[]
+
+  // Domain relations
+  contacts              PersonalContact[]
+  networkSources        NetworkSource[]
+  ownedProjects         Project[]        @relation("ProjectOwner")
+  projectMemberships    ProjectMember[]
+  introRequestsRequested IntroRequest[]  @relation("UserIntroRequestsRequested")
+  introRequestsOwned    IntroRequest[]   @relation("UserIntroRequestsOwned")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// Core domain models
+// ---------------------------------------------------------------------------
+
+/// Each contact belongs to exactly one user and is never globally visible.
+/// Contact data only lives here; other models reference contacts by ID to
+/// avoid duplication and keep ownership clear.
+model PersonalContact {
+  id        String   @id @default(cuid())
+  ownerId   String
+  sourceId  String?
+
+  fullName  String
+  email     String?  // Optional – not all contacts need an email
+  phone     String?
+  company   String?  // For search and display
+  role      String?  // For search and display
+  notes     String?
+  relationshipStrength Int?  // Optional 1-5 for ranking (manual)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner  User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  source NetworkSource? @relation(fields: [sourceId], references: [id])
+
+  introRequests IntroRequest[] @relation("ContactIntroRequests")
+
+  @@index([ownerId])
+  @@index([sourceId])
+  // Within a user's address book, we avoid duplicate email entries for the same person.
+  @@unique([ownerId, email])
+}
+
+/// Describes *where* a contact came from for a given user (e.g. manual entry,
+/// import from a CSV, synced from email). Belongs to a single user to keep
+/// network sources private.
+model NetworkSource {
+  id        String   @id @default(cuid())
+  userId    String
+
+  type      NetworkSourceType
+  name      String            // User-facing label, e.g. "Manual", "Gmail Import"
+  description String?
+
+  createdAt DateTime @default(now())
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contacts PersonalContact[]
+
+  @@index([userId])
+}
+
+/// Projects are coordination containers, not ownership mechanisms.
+/// They group activity but do not own contacts; membership only controls
+/// visibility into coordination context.
+model Project {
+  id          String   @id @default(cuid())
+  ownerId     String
+
+  name        String
+  description String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User           @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     ProjectMember[]
+  introRequests IntroRequest[]
+
+  @@index([ownerId])
+}
+
+/// Junction model between a project and users. Membership indicates
+/// who can see / participate in coordination, but does not change
+/// ownership of contacts (which stays on PersonalContact.owner).
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+
+  createdAt DateTime @default(now())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+/// A request from one user to another user's contact for an introduction.
+/// We reference the contact by ID and never duplicate their data.
+model IntroRequest {
+  id          String               @id @default(cuid())
+  requesterId String               // User who wants the intro
+  ownerId     String               // User who owns the PersonalContact
+  contactId   String               // The specific contact this intro is about
+  projectId   String?              // Optional coordination context
+
+  status      IntroRequestStatus   @default(PENDING)
+  note        String?
+
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  requester User           @relation("UserIntroRequestsRequested", fields: [requesterId], references: [id], onDelete: Cascade)
+  owner     User           @relation("UserIntroRequestsOwned",     fields: [ownerId],     references: [id], onDelete: Cascade)
+  contact   PersonalContact @relation("ContactIntroRequests",      fields: [contactId],   references: [id], onDelete: Cascade)
+  project   Project?       @relation(fields: [projectId], references: [id])
+
+  @@index([requesterId])
+  @@index([ownerId])
+  @@index([contactId])
+  @@index([projectId])
+}
+
+// High-level lifecycle of an intro request.
+enum IntroRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+// Where a contact came from in the user's network.
+enum NetworkSourceType {
+  MANUAL
+  IMPORT
+  EMAIL
+  SOCIAL
+  OTHER
+}
+
+
